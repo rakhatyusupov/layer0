@@ -730,24 +730,38 @@ function drawTextBlocks(inputString) {
     // Рисуем текст посимвольно с разными весами шрифта
     fill(textColor);
     textSize(block.fontSize);
+    textAlign(LEFT, CENTER);
     
-    // Вычисляем стартовую позицию для центрированного текста
-    const totalWidth = textWidth(block.text);
+    // Вычисляем общую ширину для центрирования
+    let totalWidth = 0;
+    drawingContext.font = `400 ${block.fontSize}px 'PP Mori', sans-serif`;
+    for (let i = 0; i < block.text.length; i++) {
+      const char = block.text[i];
+      const weight = block.charWeights[i];
+      drawingContext.font = `${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
+      totalWidth += drawingContext.measureText(char).width;
+    }
+    
+    // Стартовая позиция для центрированного текста
     let currentX = block.x - totalWidth / 2;
     
+    // Рисуем каждый символ с его весом
     for (let i = 0; i < block.text.length; i++) {
       const char = block.text[i];
       const weight = block.charWeights[i];
       
-      // Устанавливаем вес шрифта через drawingContext
-      push();
+      // Устанавливаем вес шрифта напрямую через canvas context
       drawingContext.font = `${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
-      textFont('PP Mori');
+      drawingContext.fillStyle = textColor;
+      drawingContext.textAlign = 'left';
+      drawingContext.textBaseline = 'middle';
       
-      const charWidth = textWidth(char);
-      text(char, currentX + charWidth / 2, block.y);
+      // Рисуем символ
+      drawingContext.fillText(char, currentX, block.y);
+      
+      // Двигаем позицию на ширину символа
+      const charWidth = drawingContext.measureText(char).width;
       currentX += charWidth;
-      pop();
     }
     
     pop();
@@ -1183,6 +1197,8 @@ function preload() {
 
 function setup() {
   createCanvas(800, 800);
+  pixelDensity(2)
+
   
   // Включаем drag and drop для изображений
   let canvas = document.querySelector('canvas');
