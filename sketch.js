@@ -8,7 +8,9 @@ const params = {
   radialProbability: 0.7,
   showConstructionLines: true,
   lineWeight: 0.5,
-  primitivesPerSection: 12
+  primitivesPerSection: 12,
+  recursionDepth: 2,
+  blendOpacity: 50
 };
 
 // Словарь примитивов
@@ -276,30 +278,6 @@ const PRIMITIVES = {
     }
   },
   
-  // Спираль (как на референсе)
-  spiral: function(x, y, size) {
-    noFill();
-    beginShape();
-    for (let i = 0; i < 100; i++) {
-      let angle = i * 0.3;
-      let r = size * i / 200;
-      vertex(x + cos(angle) * r, y + sin(angle) * r);
-    }
-    endShape();
-  },
-  
-  // Звезда
-  star_5: function(x, y, size) {
-    noFill();
-    beginShape();
-    for (let i = 0; i < 10; i++) {
-      let angle = i * TWO_PI / 10 - HALF_PI;
-      let r = i % 2 === 0 ? size/2 : size/4;
-      vertex(x + cos(angle) * r, y + sin(angle) * r);
-    }
-    endShape(CLOSE);
-  },
-  
   // Шестиугольник
   hexagon: function(x, y, size) {
     noFill();
@@ -432,15 +410,49 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
   
   strokeWeight(params.lineWeight);
   
-  // Рисуем примитивы
+  // Рисуем примитивы с рекурсивным наложением
   for (let i = 0; i < numPrimitives; i++) {
     const point = grid.getRandomPoint();
     const primitiveName = random(PRIMITIVE_NAMES);
     const sizeVariation = random(0.5, 1.5);
-    drawPrimitive(primitiveName, point.x, point.y, params.primitiveSize * sizeVariation);
+    
+    // Рекурсивное наложение с уменьшением прозрачности
+    drawPrimitiveRecursive(primitiveName, point.x, point.y, params.primitiveSize * sizeVariation, params.recursionDepth);
   }
   
   pop();
+}
+
+// Рекурсивная функция рисования с наложением
+function drawPrimitiveRecursive(primitiveName, x, y, size, depth) {
+  if (depth <= 0 || size < 5) return;
+  
+  // Устанавливаем прозрачность для эффекта смешивания
+  const opacity = map(depth, 0, params.recursionDepth, 50, params.blendOpacity);
+  stroke(0, 0, 0, opacity);
+  
+  // Рисуем текущий примитив
+  drawPrimitive(primitiveName, x, y, size);
+  
+  // Рекурсивно рисуем уменьшенные версии со смещением
+  if (depth > 1) {
+    const newSize = size * 0.7;
+    const offset = size * 0.15;
+    
+    // Случайно выбираем, сколько рекурсивных вызовов делать (1-3)
+    const recursiveCalls = floor(random(1, 4));
+    
+    for (let i = 0; i < recursiveCalls; i++) {
+      const angle = random(TWO_PI);
+      const newX = x + cos(angle) * offset;
+      const newY = y + sin(angle) * offset;
+      
+      // Иногда меняем примитив для разнообразия
+      const newPrimitive = random() < 0.3 ? random(PRIMITIVE_NAMES) : primitiveName;
+      
+      drawPrimitiveRecursive(newPrimitive, newX, newY, newSize, depth - 1);
+    }
+  }
 }
 
 // Главная функция генерации композиции
@@ -482,6 +494,8 @@ function setup() {
   gui.add(params, 'gridDensity', 3, 12, 1).name('Grid Density').onChange(() => generateComposition());
   gui.add(params, 'primitiveSize', 20, 80, 1).name('Primitive Size').onChange(() => generateComposition());
   gui.add(params, 'primitivesPerSection', 5, 25, 1).name('Primitives per Section').onChange(() => generateComposition());
+  gui.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
+  gui.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
   gui.add(params, 'radialProbability', 0, 1, 0.1).name('Radial Probability').onChange(() => generateComposition());
   gui.add(params, 'showConstructionLines').name('Show Grid Lines').onChange(() => generateComposition());
   gui.add(params, 'lineWeight', 0.2, 2, 0.1).name('Line Weight').onChange(() => generateComposition());
