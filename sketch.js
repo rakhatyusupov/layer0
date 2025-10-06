@@ -276,28 +276,6 @@ const PRIMITIVES = {
       let angle = i * TWO_PI / 8;
       line(x, y, x + cos(angle) * size/2, y + sin(angle) * size/2);
     }
-  },
-  
-  // Шестиугольник
-  hexagon: function(x, y, size) {
-    noFill();
-    beginShape();
-    for (let i = 0; i < 6; i++) {
-      let angle = i * TWO_PI / 6;
-      vertex(x + cos(angle) * size/2, y + sin(angle) * size/2);
-    }
-    endShape(CLOSE);
-  },
-  
-  // Восьмиугольник
-  octagon: function(x, y, size) {
-    noFill();
-    beginShape();
-    for (let i = 0; i < 8; i++) {
-      let angle = i * TWO_PI / 8;
-      vertex(x + cos(angle) * size/2, y + sin(angle) * size/2);
-    }
-    endShape(CLOSE);
   }
 };
 
@@ -374,47 +352,60 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
   push();
   strokeWeight(params.lineWeight);
   
-  // Рисуем конструктивные линии сетки (если включено)
+  // Рисуем конструктивные точки сетки (если включено)
   if (params.showConstructionLines && grid.isRadial) {
-    stroke(0, 0, 0, 30);
+    fill(0);
+    noStroke();
     const centerX = sectionX + sectionW / 2;
     const centerY = sectionY + sectionH / 2;
     const maxRadius = min(sectionW, sectionH) / 2;
     
-    // Радиальные круги
-    for (let i = 1; i <= params.gridDensity; i++) {
-      noFill();
-      ellipse(centerX, centerY, (maxRadius * 2 * i) / params.gridDensity, (maxRadius * 2 * i) / params.gridDensity);
+    // Радиальные точки на кольцах
+    for (let ring = 1; ring <= params.gridDensity; ring++) {
+      const radius = (ring * maxRadius) / params.gridDensity;
+      const pointsInRing = max(6, ring * 6);
+      
+      for (let i = 0; i < pointsInRing; i++) {
+        let angle = i * TWO_PI / pointsInRing;
+        let px = centerX + cos(angle) * radius;
+        let py = centerY + sin(angle) * radius;
+        rectMode(CENTER);
+        rect(px, py, 2, 2);
+      }
     }
     
-    // Радиальные лучи
-    for (let i = 0; i < 12; i++) {
-      let angle = i * TWO_PI / 12;
-      line(centerX, centerY, centerX + cos(angle) * maxRadius, centerY + sin(angle) * maxRadius);
-    }
+    // Центральная точка
+    rectMode(CENTER);
+    rect(centerX, centerY, 3, 3);
     
     stroke(0);
+    noFill();
   } else if (params.showConstructionLines) {
-    // Типографическая сетка
-    stroke(0, 0, 0, 20);
+    // Типографическая сетка из квадратных точек
+    fill(0);
+    noStroke();
     const cellW = sectionW / params.gridDensity;
     const cellH = sectionH / params.gridDensity;
     
     for (let i = 0; i <= params.gridDensity; i++) {
-      line(sectionX + i * cellW, sectionY, sectionX + i * cellW, sectionY + sectionH);
-      line(sectionX, sectionY + i * cellH, sectionX + sectionW, sectionY + i * cellH);
+      for (let j = 0; j <= params.gridDensity; j++) {
+        rectMode(CENTER);
+        rect(sectionX + i * cellW, sectionY + j * cellH, 2, 2);
+      }
     }
     
     stroke(0);
+    noFill();
   }
   
   strokeWeight(params.lineWeight);
   
-  // Рисуем примитивы с рекурсивным наложением
+  // Рисуем примитивы с рекурсивным наложением и большим контрастом размеров
   for (let i = 0; i < numPrimitives; i++) {
     const point = grid.getRandomPoint();
     const primitiveName = random(PRIMITIVE_NAMES);
-    const sizeVariation = random(0.5, 1.5);
+    // Увеличенный контраст размеров: от 0.3x до 2.5x
+    const sizeVariation = random() < 0.3 ? random(0.3, 0.7) : random(1.2, 2.5);
     
     // Рекурсивное наложение с уменьшением прозрачности
     drawPrimitiveRecursive(primitiveName, point.x, point.y, params.primitiveSize * sizeVariation, params.recursionDepth);
@@ -492,7 +483,7 @@ function setup() {
   
   gui.add(params, 'regenerate').name('🔄 Regenerate');
   gui.add(params, 'gridDensity', 3, 12, 1).name('Grid Density').onChange(() => generateComposition());
-  gui.add(params, 'primitiveSize', 20, 80, 1).name('Primitive Size').onChange(() => generateComposition());
+  gui.add(params, 'primitiveSize', 20, 800, 1).name('Primitive Size').onChange(() => generateComposition());
   gui.add(params, 'primitivesPerSection', 5, 25, 1).name('Primitives per Section').onChange(() => generateComposition());
   gui.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
   gui.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
