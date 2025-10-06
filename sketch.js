@@ -1,10 +1,8 @@
 let myFilterShader;
 let gui;
 let backgroundImage = null;
-let distortedImage = null; // Буфер для изображения с шейдером
-let canvasAspectRatio = 1; // 1:1 по умолчанию
-
-// Параметры изображения
+let distortedImage = null; 
+let canvasAspectRatio = 1; 
 let imageScale = 1.0; // Масштаб изображения
 let imageOffsetX = 0; // Смещение по X
 let imageOffsetY = 0; // Смещение по Y
@@ -16,6 +14,15 @@ let dragStartY = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 
+// Текст для типографики (разделяется по символу /)
+let TEXT_INPUT = "GENERATIVE/GRID/SYSTEM";
+
+// Массив для хранения плашек с текстом
+let textBlocks = [];
+let draggingBlock = null;
+let dragBlockOffsetX = 0;
+let dragBlockOffsetY = 0;
+
 // Цветовая палитра
 const COLORS = {
   background: '#c9ccb7',      // светло-серо-зеленоватый фон
@@ -26,6 +33,10 @@ const COLORS = {
   black: '#1a1a1a',           // чёрный текст
   nearWhite: '#e9eae4'        // почти белый
 };
+
+// Палитра для плашек
+const PALETTE = ['#c9ccb7', '#d8e17b', '#92b292', '#f05d30', '#7b7f83', '#1a1a1a', '#e9eae4'];
+
 
 const params = {
   regenerate: () => generateComposition(),
@@ -39,6 +50,14 @@ const params = {
   blendOpacity: 50,
   primitiveSizeMultiplier: 4.0, // Множитель размера примитивов относительно ячеек
   primitiveColor: 'nearWhite',     // Цвет примитивов из палитры
+  // Typography params
+  showTypography: true,
+  typographyText: "GENERATIVE/GRID/SYSTEM",
+  blockSizeContrast: 0.5, // Контраст размеров плашек (0 = одинаковые, 1 = максимальный)
+  resetTextBlocks: () => {
+    textBlocks = [];
+    generateComposition();
+  },
   // Image transform params
   imageScale: 1.0,
   imageOffsetX: 0,
@@ -164,6 +183,7 @@ const PRIMITIVES = {
     endShape();
   },
   
+  // Базовые геометрические формы
   square: function(x, y, size) {
     noFill();
     rectMode(CENTER);
@@ -546,7 +566,7 @@ function drawPrimitiveRecursive(primitiveName, x, y, size, depth) {
   
   // Устанавливаем прозрачность для эффекта смешивания
   const opacity = map(depth, 0, params.recursionDepth, 50, params.blendOpacity);
-  stroke(0, 0, 0, opacity);
+  stroke(255, 255, 255, opacity);
   
   // Рисуем текущий примитив
   drawPrimitive(primitiveName, x, y, size);
@@ -613,6 +633,184 @@ function generateComposition() {
   strokeWeight(0.5);
   line(w, 0, w, height);
   line(0, h, width, h);
+  
+  // Рисуем типографику поверх всего
+  if (params.showTypography && params.typographyText) {
+    drawTextBlocks(params.typographyText);
+  }
+}
+
+// Функция отрисовки типографических блоков
+function drawTextBlocks(inputString) {
+  if (!inputString || inputString.trim() === '') {
+    textBlocks = [];
+    return;
+  }
+  
+  // Разбиваем текст по символу /
+  const lines = inputString.split('/').map(line => line.trim()).filter(line => line.length > 0);
+  if (lines.length === 0) {
+    textBlocks = [];
+    return;
+  }
+  
+  const nLines = lines.length;
+  
+  // Если количество строк изменилось или массив пуст - генерируем новые плашки
+  if (textBlocks.length !== nLines) {
+    textBlocks = [];
+    
+    lines.forEach((line, i) => {
+      // Высота плашки с учетом контраста
+      // Базовый размер
+      const baseHeight = height / 9;
+      // Вариация в зависимости от контраста
+      const heightVariation = (height / 8 - height / 10) * params.blockSizeContrast;
+      const blockHeight = baseHeight + random(-heightVariation, heightVariation);
+      
+      // Размер текста (первая строка крупнее, далее меньше)
+      const fontSize = i === 0 ? width / 12 : width / (14 + i * 2);
+      
+      // Позиция по вертикали (равномерно распределяем)
+      const yPos = (i + 0.5) * (height / nLines);
+      
+      // Случайный сдвиг по X (±5% ширины канваса)
+      const xShift = random(-width * 0.05, width * 0.05);
+      const xPos = width / 2 + xShift;
+      
+      // Случайный цвет из палитры
+      const bgColor = random(PALETTE);
+      
+      // Генерируем случайные веса шрифта для каждого символа
+      const charWeights = [];
+      for (let c = 0; c < line.length; c++) {
+        charWeights.push(random(['400', '500', '600', '700']));
+      }
+      
+      textBlocks.push({
+        text: line,
+        x: xPos,
+        y: yPos,
+        fontSize: fontSize,
+        blockHeight: blockHeight,
+        bgColor: bgColor,
+        padding: random(30, 60),
+        charWeights: charWeights
+      });
+    });
+  }
+  
+  // Настройки шрифта
+  textAlign(CENTER, CENTER);
+  
+  // Рисуем каждую плашку из массива
+  textBlocks.forEach((block) => {
+    // Измеряем общую ширину текста для плашки
+    textFont('PP Mori');
+    textSize(block.fontSize);
+    const tw = textWidth(block.text);
+    const blockWidth = tw + block.padding * 2;
+    
+    // Сохраняем ширину в объект для проверки клика
+    block.width = blockWidth;
+    block.height = block.blockHeight;
+    
+    // Определяем цвет текста (черный или белый) в зависимости от яркости фона
+    const bg = color(block.bgColor);
+    const bgBrightness = brightness(bg);
+    const textColor = bgBrightness > 70 ? '#1a1a1a' : '#e9eae4';
+    
+    // Рисуем плашку
+    push();
+    noStroke();
+    fill(block.bgColor);
+    rectMode(CENTER);
+    rect(block.x, block.y, blockWidth, block.blockHeight);
+    
+    // Рисуем текст посимвольно с разными весами шрифта
+    fill(textColor);
+    textSize(block.fontSize);
+    
+    // Вычисляем стартовую позицию для центрированного текста
+    const totalWidth = textWidth(block.text);
+    let currentX = block.x - totalWidth / 2;
+    
+    for (let i = 0; i < block.text.length; i++) {
+      const char = block.text[i];
+      const weight = block.charWeights[i];
+      
+      // Устанавливаем вес шрифта через drawingContext
+      push();
+      drawingContext.font = `${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
+      textFont('PP Mori');
+      
+      const charWidth = textWidth(char);
+      text(char, currentX + charWidth / 2, block.y);
+      currentX += charWidth;
+      pop();
+    }
+    
+    pop();
+  });
+}
+
+// Функция отрисовки типографических блоков для экспорта в HQ
+function drawTextBlocksExport(canvas, inputString, scale) {
+  if (!inputString || inputString.trim() === '') return;
+  
+  // Разбиваем текст по символу /
+  const lines = inputString.split('/').map(line => line.trim()).filter(line => line.length > 0);
+  if (lines.length === 0) return;
+  
+  const nLines = lines.length;
+  const canvasSize = 1600; // HQ размер
+  
+  // Настройки шрифта
+  canvas.textAlign(CENTER, CENTER);
+  canvas.textFont('Arial, Helvetica, sans-serif');
+  
+  // Для каждой строки создаем плашку
+  lines.forEach((line, i) => {
+    // Случайная высота плашки (от 1/8 до 1/10 высоты канваса)
+    const blockHeight = random(canvasSize / 10, canvasSize / 8);
+    
+    // Размер текста (первая строка крупнее, далее меньше)
+    const fontSize = i === 0 ? canvasSize / 12 : canvasSize / (14 + i * 2);
+    canvas.textSize(fontSize);
+    
+    // Измеряем ширину текста для плашки
+    const tw = canvas.textWidth(line);
+    const padding = random(30, 60) * scale;
+    const blockWidth = tw + padding * 2;
+    
+    // Позиция по вертикали (равномерно распределяем)
+    const yPos = (i + 0.5) * (canvasSize / nLines);
+    
+    // Случайный сдвиг по X (±5% ширины канваса)
+    const xShift = random(-canvasSize * 0.05, canvasSize * 0.05);
+    const xPos = canvasSize / 2 + xShift;
+    
+    // Случайный цвет из палитры
+    const bgColor = random(PALETTE);
+    
+    // Определяем цвет текста (черный или белый) в зависимости от яркости фона
+    const bg = color(bgColor);
+    const bgBrightness = brightness(bg);
+    const textColor = bgBrightness > 70 ? '#1a1a1a' : '#e9eae4';
+    
+    // Рисуем плашку
+    canvas.push();
+    canvas.noStroke();
+    canvas.fill(bgColor);
+    canvas.rectMode(CENTER);
+    canvas.rect(xPos, yPos, blockWidth, blockHeight);
+    
+    // Рисуем текст
+    canvas.fill(textColor);
+    canvas.textStyle(BOLD);
+    canvas.text(line, xPos, yPos);
+    canvas.pop();
+  });
 }
 
 // Функция для применения шейдера только к изображению
@@ -947,6 +1145,11 @@ function exportHighQuality() {
   exportCanvas.line(w, 0, w, 1600);
   exportCanvas.line(0, h, 1600, h);
   
+  // Рисуем типографику для экспорта
+  if (params.showTypography && params.typographyText) {
+    drawTextBlocksExport(exportCanvas, params.typographyText, scale);
+  }
+  
   // Сохраняем
   saveCanvas(exportCanvas, 'generative_grid_HQ', 'png');
   
@@ -1071,6 +1274,21 @@ function setup() {
   compFolder.add(params, 'primitiveColor', ['black', 'orange', 'lime', 'greenGray', 'warmGray', 'nearWhite']).name('Primitive Color').onChange(() => generateComposition());
   compFolder.open();
   
+  // Typography controls
+  const typoFolder = gui.addFolder('Typography');
+  typoFolder.add(params, 'showTypography').name('✏️ Show Typography').onChange(() => generateComposition());
+  typoFolder.add(params, 'typographyText').name('📝 Text (use /)').onChange((value) => {
+    TEXT_INPUT = value;
+    textBlocks = []; // Сбрасываем плашки при изменении текста
+    generateComposition();
+  });
+  typoFolder.add(params, 'blockSizeContrast', 0, 1, 0.05).name('📏 Size Contrast').onChange(() => {
+    textBlocks = []; // Пересоздаем плашки с новыми размерами
+    generateComposition();
+  });
+  typoFolder.add(params, 'resetTextBlocks').name('🔄 Reset Positions');
+  typoFolder.open();
+  
   // Distortion shader controls
   const distFolder = gui.addFolder('Distortion Effect');
   distFolder.add(params, 'useDistortion').name('Enable Distortion');
@@ -1094,6 +1312,24 @@ function draw() {
 }
 
 function mousePressed() {
+  // Проверяем клик на плашку с текстом (проверяем в обратном порядке - сверху вниз)
+  if (params.showTypography && textBlocks.length > 0) {
+    for (let i = textBlocks.length - 1; i >= 0; i--) {
+      const block = textBlocks[i];
+      // Проверяем попадание в прямоугольник плашки
+      if (mouseX > block.x - block.width / 2 && 
+          mouseX < block.x + block.width / 2 &&
+          mouseY > block.y - block.height / 2 && 
+          mouseY < block.y + block.height / 2) {
+        draggingBlock = block;
+        dragBlockOffsetX = mouseX - block.x;
+        dragBlockOffsetY = mouseY - block.y;
+        cursor('grabbing');
+        return false;
+      }
+    }
+  }
+  
   // Начинаем перемещение изображения только если есть изображение и нажата левая кнопка мыши
   if (backgroundImage && mouseButton === LEFT) {
     isDraggingImage = true;
@@ -1107,6 +1343,14 @@ function mousePressed() {
 }
 
 function mouseDragged() {
+  // Перемещаем плашку если она выбрана
+  if (draggingBlock) {
+    draggingBlock.x = mouseX - dragBlockOffsetX;
+    draggingBlock.y = mouseY - dragBlockOffsetY;
+    generateComposition();
+    return false;
+  }
+  
   // Перемещаем изображение если активен drag
   if (isDraggingImage && backgroundImage) {
     const deltaX = mouseX - dragStartX;
@@ -1125,6 +1369,13 @@ function mouseDragged() {
 }
 
 function mouseReleased() {
+  // Завершаем перемещение плашки
+  if (draggingBlock) {
+    draggingBlock = null;
+    cursor('auto');
+    return false;
+  }
+  
   // Завершаем перемещение изображения
   if (isDraggingImage) {
     isDraggingImage = false;
@@ -1133,9 +1384,30 @@ function mouseReleased() {
 }
 
 function mouseMoved() {
-  // Меняем курсор в зависимости от наличия изображения
-  if (backgroundImage && !isDraggingImage) {
-    cursor('grab');
+  // Проверяем наведение на плашку с текстом
+  if (params.showTypography && textBlocks.length > 0) {
+    let overBlock = false;
+    for (let i = textBlocks.length - 1; i >= 0; i--) {
+      const block = textBlocks[i];
+      if (mouseX > block.x - block.width / 2 && 
+          mouseX < block.x + block.width / 2 &&
+          mouseY > block.y - block.height / 2 && 
+          mouseY < block.y + block.height / 2) {
+        cursor('grab');
+        overBlock = true;
+        return;
+      }
+    }
+    if (!overBlock && !isDraggingImage && !draggingBlock) {
+      cursor(backgroundImage ? 'grab' : 'auto');
+    }
+  } else {
+    // Меняем курсор в зависимости от наличия изображения
+    if (backgroundImage && !isDraggingImage && !draggingBlock) {
+      cursor('grab');
+    } else if (!isDraggingImage && !draggingBlock) {
+      cursor('auto');
+    }
   }
 }
 

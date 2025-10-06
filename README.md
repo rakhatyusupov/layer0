@@ -145,6 +145,7 @@ layer0/
 - **[DISTORTION.md](DISTORTION.md)** - Руководство по шейдеру дисторсии с пресетами
 - **[IMAGE_DRAG_DROP.md](IMAGE_DRAG_DROP.md)** - Как работает загрузка изображений
 - **[IMAGE_TRANSFORM.md](IMAGE_TRANSFORM.md)** - Масштабирование и перемещение изображений
+- **[EXPORT_HQ.md](EXPORT_HQ.md)** - Экспорт высокого качества (2x разрешение)
 - **[COLOR_PALETTE.md](COLOR_PALETTE.md)** - Цветовая палитра и её использование
 - **[QUICKSTART.md](QUICKSTART.md)** - Быстрый старт за 30 секунд
 
