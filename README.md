@@ -1,57 +1,131 @@
-# p5.filterShader with lil-gui
+# p5.filterShader - Генеративная система сеток
 
-This project demonstrates how to use the [p5.filterShader](https://github.com/BarneyWhiteman/p5.filterShader) library with [lil-gui](https://lil-gui.georgealways.com/) for interactive shader controls.
+Модульная система для создания генеративных композиций с геометрическими примитивами, основанная на p5.js и p5.filterShader.
 
-## Features
+![Generative Grid System](https://img.shields.io/badge/p5.js-1.7.0-ED225D?style=flat-square&logo=p5.js)
+![lil-gui](https://img.shields.io/badge/lil--gui-0.19-4FC08D?style=flat-square)
 
-- **p5.filterShader**: Apply post-processing effects to p5.js sketches
-- **lil-gui**: Interactive GUI controls for real-time parameter adjustment
-- **Custom Filter Shader**: Adjustable saturation, brightness, contrast, and color tint
-- **3D Animation**: Animated 3D shapes (boxes and torus) to demonstrate the filter effects
+## 🎨 Концепция
 
-## Getting Started
+Система создаёт композиции, вдохновлённые техническими чертежами и геометрическими построениями:
 
-1. Open `index.html` in a web browser
-2. Use the GUI controls on the right to adjust the filter parameters:
-   - **Saturation**: Control color intensity (0 = grayscale, 2 = oversaturated)
-   - **Brightness**: Adjust overall brightness
-   - **Contrast**: Modify contrast levels
-   - **Color Tint**: Apply RGB color tinting
-   - **Rotation Speed**: Control animation speed
+- **4 секции**: Canvas делится на 4 равные части
+- **2 типа сеток**: Радиальная и типографическая
+- **60+ примитивов**: Эллипсы, окружности, многоугольники, линии, спирали
+- **Фигуры второго порядка**: Множество вариаций эллипсов, парабол, гипербол
+- **Модульная архитектура**: Все примитивы хранятся в JSON-подобном словаре
 
-## Files
+## 🚀 Запуск
 
-- `index.html` - Main HTML file with library includes
-- `sketch.js` - p5.js sketch with 3D animation and GUI setup
-- `filter.vert` - Vertex shader (generic for p5.filterShader)
-- `filter.frag` - Fragment shader with custom color adjustments
-- `README.md` - This file
+Просто откройте `index.html` в браузере.
 
-## Libraries Used
+## 🎛️ Управление
 
-- [p5.js](https://p5js.org/) v1.7.0
-- [p5.filterShader](https://github.com/BarneyWhiteman/p5.filterShader) v0.0.3
-- [lil-gui](https://lil-gui.georgealways.com/) v0.19
+### GUI Контролы:
+- **🔄 Regenerate** - новая композиция
+- **Grid Density** (3-12) - плотность сетки
+- **Primitive Size** (20-80) - размер примитивов
+- **Primitives per Section** (5-25) - количество элементов на секцию
+- **Radial Probability** (0-1) - вероятность радиальной сетки
+- **Show Grid Lines** - показать конструктивные линии
+- **Line Weight** (0.2-2) - толщина линий
 
-## How It Works
+### Горячие клавиши:
+- **Пробел** - регенерация композиции
+- **S** - сохранить изображение
 
-1. The sketch draws 3D shapes using p5.js WEBGL mode
-2. After drawing, `filterShader()` applies the custom shader as a post-processing effect
-3. lil-gui provides real-time controls that update shader uniforms
-4. The shader modifies the rendered image based on the GUI parameters
+## 📐 Архитектура
 
-## Customization
+### 1. Словарь примитивов (PRIMITIVES)
+```javascript
+const PRIMITIVES = {
+  ellipse_horizontal: function(x, y, size) { ... },
+  vesica_piscis: function(x, y, size) { ... },
+  spiral: function(x, y, size) { ... },
+  // ... 60+ примитивов
+}
+```
 
-You can modify the fragment shader (`filter.frag`) to create different effects:
-- Add new uniform parameters
-- Implement different filter algorithms (blur, edge detection, chromatic aberration, etc.)
-- Combine multiple effects
+### 2. Функция вызова примитивов
+```javascript
+drawPrimitive(primitiveName, x, y, size)
+```
 
-Update the GUI in `sketch.js` to match any new parameters you add.
+### 3. Класс Grid
+Генерирует точки на основе двух типов сеток:
+- **Типографическая** - прямоугольная сетка
+- **Радиальная** - круговая сетка с концентрическими кольцами
 
-## Resources
+### 4. Функция генерации секций
+Каждая секция:
+- Создаёт свою сетку (случайный тип)
+- Рисует конструктивные линии (опционально)
+- Размещает случайные примитивы по точкам сетки
 
-- [p5.filterShader Examples](https://editor.p5js.org/BarneyCodes/collections/qwCiTya1e)
-- [p5.js Reference](https://p5js.org/reference/)
-- [lil-gui Documentation](https://lil-gui.georgealways.com/)
-- [GLSL Shader Reference](https://www.khronos.org/opengl/wiki/Core_Language_(GLSL))
+## 📚 Примитивы
+
+Полный список примитивов смотрите в файле [PRIMITIVES.md](PRIMITIVES.md)
+
+**Основные категории:**
+- 🔵 Эллипсы и фигуры второго порядка (12+)
+- ⬜ Прямоугольники и квадраты (5)
+- 🔺 Многоугольники (4)
+- 📏 Линии и конструкции (9)
+- 🌙 Дуги и полуокружности (8)
+- ⚫ Точки и маркеры (4)
+- 🌀 Специальные формы (спирали, vesica piscis)
+
+## 🎨 Цветовая схема
+
+- **Фон:** Белый (255)
+- **Примитивы:** Черный (0)
+- **Конструктивные линии:** Светло-серый (прозрачность)
+
+## 🔧 Технологии
+
+- [p5.js](https://p5js.org/) v1.7.0 - графическая библиотека
+- [p5.filterShader](https://github.com/BarneyWhiteman/p5.filterShader) v0.0.3 - пост-обработка шейдерами
+- [lil-gui](https://lil-gui.georgealways.com/) v0.19 - интерактивный интерфейс
+
+## 📁 Структура файлов
+
+```
+layer0/
+├── index.html          # Главный HTML файл
+├── sketch.js           # Основная логика (система сеток + примитивы)
+├── filter.vert         # Вершинный шейдер (заготовка)
+├── filter.frag         # Фрагментный шейдер (заготовка)
+├── README.md           # Этот файл
+└── PRIMITIVES.md       # Полный список примитивов
+```
+
+## 🎯 Возможности расширения
+
+### Добавление нового примитива:
+```javascript
+PRIMITIVES.my_shape = function(x, y, size) {
+  // Ваш код рисования
+  ellipse(x, y, size, size);
+  line(x - size/2, y, x + size/2, y);
+}
+```
+
+### Использование шейдеров:
+Раскомментируйте в `draw()`:
+```javascript
+filterShader(myFilterShader);
+```
+
+Затем настройте `filter.frag` для пост-обработки.
+
+## 🎨 Вдохновение
+
+Система вдохновлена:
+- Техническими чертежами и архитектурными построениями
+- Геометрическими конструкциями (Vesica Piscis, золотое сечение)
+- Радиальными и типографическими сетками
+- Работами конструктивистов и швейцарской школы дизайна
+
+## 📝 Лицензия
+
+MIT
