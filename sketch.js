@@ -1,5 +1,31 @@
 let myFilterShader;
 let gui;
+let backgroundImage = null;
+let distortedImage = null; // Буфер для изображения с шейдером
+let canvasAspectRatio = 1; // 1:1 по умолчанию
+
+// Параметры изображения
+let imageScale = 1.0; // Масштаб изображения
+let imageOffsetX = 0; // Смещение по X
+let imageOffsetY = 0; // Смещение по Y
+
+// Для drag перемещения изображения
+let isDraggingImage = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+// Цветовая палитра
+const COLORS = {
+  background: '#c9ccb7',      // светло-серо-зеленоватый фон
+  lime: '#d8e17b',            // лаймово-жёлтый акцент
+  greenGray: '#92b292',       // серо-зеленый квадрат
+  orange: '#f05d30',          // оранжево-красный акцент
+  warmGray: '#7b7f83',        // тёплый серый
+  black: '#1a1a1a',           // чёрный текст
+  nearWhite: '#e9eae4'        // почти белый
+};
 
 const params = {
   regenerate: () => generateComposition(),
@@ -11,6 +37,21 @@ const params = {
   primitivesPerSection: 12,
   recursionDepth: 2,
   blendOpacity: 50,
+  primitiveSizeMultiplier: 4.0, // Множитель размера примитивов относительно ячеек
+  primitiveColor: 'nearWhite',     // Цвет примитивов из палитры
+  // Image transform params
+  imageScale: 1.0,
+  imageOffsetX: 0,
+  imageOffsetY: 0,
+  resetImageTransform: () => {
+    params.imageScale = 1.0;
+    params.imageOffsetX = 0;
+    params.imageOffsetY = 0;
+    imageScale = 1.0;
+    imageOffsetX = 0;
+    imageOffsetY = 0;
+    generateComposition();
+  },
   // Distortion shader params
   useDistortion: true,
   distortionScale1: 0.3,
@@ -298,12 +339,12 @@ class Grid {
   
   // Получить размер ячейки для привязки размера примитивов
   getCellSize() {
-    if (this.isRadial) {
-      const maxRadius = min(this.w, this.h) / 2;
-      return (maxRadius / this.density) * 1.5;
-    } else {
-      return min(this.cellW, this.cellH) * 0.9;
-    }
+    const baseSize = this.isRadial 
+      ? (min(this.w, this.h) / 2 / this.density) * 1.5
+      : min(this.cellW, this.cellH) * 0.9;
+    
+    // Умножаем на множитель (по умолчанию 4x)
+    return baseSize * params.primitiveSizeMultiplier;
   }
   
   // Получить случайную начальную ячейку
@@ -424,9 +465,12 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
   push();
   strokeWeight(params.lineWeight);
   
+  // Получаем цвет для точек сетки
+  const gridColor = COLORS.warmGray;
+  
   // Рисуем конструктивные точки сетки (более заметные)
   if (params.showConstructionLines && grid.isRadial) {
-    fill(0);
+    fill(gridColor);
     noStroke();
     const centerX = sectionX + sectionW / 2;
     const centerY = sectionY + sectionH / 2;
@@ -450,11 +494,10 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
     rectMode(CENTER);
     rect(centerX, centerY, 4, 4);
     
-    stroke(0);
     noFill();
   } else if (params.showConstructionLines) {
     // Типографическая сетка из квадратных точек
-    fill(0);
+    fill(gridColor);
     noStroke();
     
     for (let i = 0; i <= params.gridDensity; i++) {
@@ -464,10 +507,12 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
       }
     }
     
-    stroke(0);
     noFill();
   }
   
+  // Восстанавливаем цвет примитивов из параметров
+  const primitiveColor = COLORS[params.primitiveColor] || COLORS.black;
+  stroke(primitiveColor);
   strokeWeight(params.lineWeight);
   
   // Рисуем примитивы используя новую логику сетки
@@ -529,9 +574,29 @@ function drawPrimitiveRecursive(primitiveName, x, y, size, depth) {
 
 // Главная функция генерации композиции
 function generateComposition() {
-  background(255);
-  stroke(0);
-  fill(0);
+  // Если есть изображение, применяем к нему шейдер и сохраняем в буфер
+  if (backgroundImage && params.useDistortion) {
+    applyShaderToImage();
+  }
+  
+  // Рисуем фоновое изображение
+  if (backgroundImage) {
+    if (params.useDistortion && distortedImage) {
+      // Рисуем искаженное изображение
+      image(distortedImage, 0, 0, width, height);
+    } else {
+      // Рисуем обычное изображение
+      drawBackgroundImage();
+    }
+  } else {
+    // Фон из палитры если нет изображения
+    background(COLORS.background);
+  }
+  
+  // Получаем цвет примитивов из палитры
+  const primitiveColor = COLORS[params.primitiveColor] || COLORS.black;
+  stroke(primitiveColor);
+  fill(primitiveColor);
   noFill();
   
   const w = width / 2;
@@ -544,11 +609,368 @@ function generateComposition() {
   generateSection(w, h, w, h);       // Нижняя правая
   
   // Рисуем разделительные линии между секциями
-  stroke(150);
+  stroke(COLORS.warmGray);
   strokeWeight(0.5);
   line(w, 0, w, height);
   line(0, h, width, h);
-  stroke(0);
+}
+
+// Функция для применения шейдера только к изображению
+function applyShaderToImage() {
+  // Создаем графический буфер если его нет
+  if (!distortedImage) {
+    distortedImage = createGraphics(width, height);
+  } else if (distortedImage.width !== width || distortedImage.height !== height) {
+    distortedImage.resizeCanvas(width, height);
+  }
+  
+  // Рисуем изображение в буфер
+  distortedImage.push();
+  distortedImage.clear();
+  distortedImage.imageMode(CENTER);
+  
+  const imgAspect = backgroundImage.width / backgroundImage.height;
+  const canvasAspect = width / height;
+  
+  let drawWidth, drawHeight;
+  
+  if (imgAspect > canvasAspect) {
+    drawHeight = height;
+    drawWidth = height * imgAspect;
+  } else {
+    drawWidth = width;
+    drawHeight = width / imgAspect;
+  }
+  
+  // Применяем масштаб и смещение
+  drawWidth *= imageScale;
+  drawHeight *= imageScale;
+  
+  distortedImage.image(
+    backgroundImage, 
+    width/2 + imageOffsetX, 
+    height/2 + imageOffsetY, 
+    drawWidth, 
+    drawHeight
+  );
+  distortedImage.pop();
+  
+  // Применяем шейдер к буферу
+  myFilterShader.setUniform("u_distortionScale1", params.distortionScale1);
+  myFilterShader.setUniform("u_distortionScale2", params.distortionScale2);
+  myFilterShader.setUniform("u_distortionAmp", params.distortionAmp);
+  myFilterShader.setUniform("u_distortionFreqX", params.distortionFreqX);
+  myFilterShader.setUniform("u_distortionFreqY", params.distortionFreqY);
+  
+  if (params.animateDistortion) {
+    myFilterShader.setUniform("u_time", millis() / 1000.0);
+  } else {
+    myFilterShader.setUniform("u_time", 0.0);
+  }
+  
+  distortedImage.filterShader(myFilterShader);
+}
+
+// Функция для отрисовки фонового изображения с сохранением aspect ratio
+function drawBackgroundImage() {
+  push();
+  imageMode(CENTER);
+  
+  const imgAspect = backgroundImage.width / backgroundImage.height;
+  const canvasAspect = width / height;
+  
+  let drawWidth, drawHeight;
+  
+  // Cover режим - изображение покрывает весь canvas
+  if (imgAspect > canvasAspect) {
+    // Изображение шире
+    drawHeight = height;
+    drawWidth = height * imgAspect;
+  } else {
+    // Изображение выше
+    drawWidth = width;
+    drawHeight = width / imgAspect;
+  }
+  
+  image(backgroundImage, width/2, height/2, drawWidth, drawHeight);
+  pop();
+}
+
+// Обработка загрузки изображения
+function handleFile(file) {
+  if (file.type === 'image') {
+    loadImage(file.data, img => {
+      backgroundImage = img;
+      
+      // Canvas всегда остается квадратным 800x800
+      // Изображение будет масштабироваться внутри
+      
+      // Перегенерируем композицию
+      generateComposition();
+    });
+  }
+}
+
+// Функция высококачественного экспорта (2x разрешение)
+function exportHighQuality() {
+  // Создаем временный canvas с удвоенным разрешением
+  const exportCanvas = createGraphics(1600, 1600);
+  const scale = 2.0; // 2x разрешение
+  
+  // Сохраняем текущее состояние
+  const oldWidth = width;
+  const oldHeight = height;
+  
+  // Временно переключаемся на экспортный canvas
+  exportCanvas.pixelDensity(1); // Для точного контроля размера
+  
+  // === РИСУЕМ ИЗОБРАЖЕНИЕ ===
+  if (backgroundImage) {
+    if (params.useDistortion) {
+      // Создаем буфер для дисторсии в высоком разрешении
+      let exportDistorted = createGraphics(1600, 1600);
+      exportDistorted.pixelDensity(1);
+      
+      exportDistorted.push();
+      exportDistorted.clear();
+      exportDistorted.imageMode(CENTER);
+      
+      const imgAspect = backgroundImage.width / backgroundImage.height;
+      const canvasAspect = 1; // Квадратный canvas
+      
+      let drawWidth, drawHeight;
+      if (imgAspect > canvasAspect) {
+        drawHeight = 1600;
+        drawWidth = 1600 * imgAspect;
+      } else {
+        drawWidth = 1600;
+        drawHeight = 1600 / imgAspect;
+      }
+      
+      // Применяем масштаб и смещение
+      drawWidth *= imageScale;
+      drawHeight *= imageScale;
+      
+      exportDistorted.image(
+        backgroundImage, 
+        800 + imageOffsetX * scale, 
+        800 + imageOffsetY * scale, 
+        drawWidth, 
+        drawHeight
+      );
+      exportDistorted.pop();
+      
+      // Применяем шейдер
+      myFilterShader.setUniform("u_distortionScale1", params.distortionScale1);
+      myFilterShader.setUniform("u_distortionScale2", params.distortionScale2);
+      myFilterShader.setUniform("u_distortionAmp", params.distortionAmp);
+      myFilterShader.setUniform("u_distortionFreqX", params.distortionFreqX);
+      myFilterShader.setUniform("u_distortionFreqY", params.distortionFreqY);
+      myFilterShader.setUniform("u_time", millis() / 1000.0);
+      
+      exportDistorted.filterShader(myFilterShader);
+      exportCanvas.image(exportDistorted, 0, 0);
+      exportDistorted.remove();
+    } else {
+      // Рисуем изображение без шейдера
+      exportCanvas.push();
+      exportCanvas.imageMode(CENTER);
+      
+      const imgAspect = backgroundImage.width / backgroundImage.height;
+      let drawWidth, drawHeight;
+      
+      if (imgAspect > 1) {
+        drawHeight = 1600;
+        drawWidth = 1600 * imgAspect;
+      } else {
+        drawWidth = 1600;
+        drawHeight = 1600 / imgAspect;
+      }
+      
+      drawWidth *= imageScale;
+      drawHeight *= imageScale;
+      
+      exportCanvas.image(
+        backgroundImage, 
+        800 + imageOffsetX * scale, 
+        800 + imageOffsetY * scale, 
+        drawWidth, 
+        drawHeight
+      );
+      exportCanvas.pop();
+    }
+  } else {
+    exportCanvas.background(COLORS.background);
+  }
+  
+  // === РИСУЕМ ПРИМИТИВЫ ===
+  const primitiveColor = COLORS[params.primitiveColor] || COLORS.nearWhite;
+  exportCanvas.stroke(primitiveColor);
+  exportCanvas.fill(primitiveColor);
+  exportCanvas.noFill();
+  
+  // Функция для рисования примитива в экспортном canvas
+  const drawPrimitiveExport = (name, x, y, size) => {
+    const scaledX = x * scale;
+    const scaledY = y * scale;
+    const scaledSize = size * scale;
+    
+    exportCanvas.push();
+    exportCanvas.strokeWeight(params.lineWeight * scale);
+    
+    // Вызываем оригинальную функцию примитива, но на экспортном canvas
+    const oldP5 = window;
+    // Временно подменяем p5 функции
+    const originalEllipse = ellipse;
+    const originalLine = line;
+    const originalRect = rect;
+    const originalArc = arc;
+    const originalBeginShape = beginShape;
+    const originalEndShape = endShape;
+    const originalVertex = vertex;
+    const originalBezierVertex = bezierVertex;
+    const originalQuadraticVertex = quadraticVertex;
+    const originalCurveVertex = curveVertex;
+    const originalPush = push;
+    const originalPop = pop;
+    const originalTranslate = translate;
+    const originalRotate = rotate;
+    const originalNoFill = noFill;
+    
+    // Переопределяем функции для экспорта
+    window.ellipse = (a, b, c, d) => exportCanvas.ellipse(a, b, c, d);
+    window.line = (a, b, c, d) => exportCanvas.line(a, b, c, d);
+    window.rect = (a, b, c, d) => exportCanvas.rect(a, b, c, d);
+    window.arc = (a, b, c, d, e, f, g) => exportCanvas.arc(a, b, c, d, e, f, g);
+    window.beginShape = (a) => exportCanvas.beginShape(a);
+    window.endShape = (a) => exportCanvas.endShape(a);
+    window.vertex = (a, b) => exportCanvas.vertex(a, b);
+    window.bezierVertex = (a, b, c, d, e, f) => exportCanvas.bezierVertex(a, b, c, d, e, f);
+    window.quadraticVertex = (a, b, c, d) => exportCanvas.quadraticVertex(a, b, c, d);
+    window.curveVertex = (a, b) => exportCanvas.curveVertex(a, b);
+    window.push = () => exportCanvas.push();
+    window.pop = () => exportCanvas.pop();
+    window.translate = (a, b) => exportCanvas.translate(a, b);
+    window.rotate = (a) => exportCanvas.rotate(a);
+    window.noFill = () => exportCanvas.noFill();
+    
+    PRIMITIVES[name](scaledX, scaledY, scaledSize);
+    
+    // Восстанавливаем оригинальные функции
+    window.ellipse = originalEllipse;
+    window.line = originalLine;
+    window.rect = originalRect;
+    window.arc = originalArc;
+    window.beginShape = originalBeginShape;
+    window.endShape = originalEndShape;
+    window.vertex = originalVertex;
+    window.bezierVertex = originalBezierVertex;
+    window.quadraticVertex = originalQuadraticVertex;
+    window.curveVertex = originalCurveVertex;
+    window.push = originalPush;
+    window.pop = originalPop;
+    window.translate = originalTranslate;
+    window.rotate = originalRotate;
+    window.noFill = originalNoFill;
+    
+    exportCanvas.pop();
+  };
+  
+  // Функция для рисования секции в экспорте
+  const generateSectionExport = (startX, startY, sectionWidth, sectionHeight) => {
+    const useRadial = random() < params.radialProbability;
+    const grid = new Grid(startX, startY, sectionWidth, sectionHeight, params.gridDensity, useRadial);
+    
+    exportCanvas.strokeWeight(params.lineWeight * scale);
+    exportCanvas.stroke(COLORS.warmGray);
+    
+    if (params.showConstructionLines) {
+      const points = grid.getAllPoints();
+      points.forEach(p => {
+        if (useRadial && grid.ring === 0) {
+          exportCanvas.rect(p.x * scale - 2 * scale, p.y * scale - 2 * scale, 4 * scale, 4 * scale);
+        } else {
+          exportCanvas.rect(p.x * scale - 1.5 * scale, p.y * scale - 1.5 * scale, 3 * scale, 3 * scale);
+        }
+      });
+    }
+    
+    exportCanvas.stroke(primitiveColor);
+    
+    for (let i = 0; i < params.primitivesPerSection; i++) {
+      const cell = grid.getRandomCell();
+      const primitiveName = random(PRIMITIVE_NAMES);
+      const size = grid.getCellSize();
+      
+      drawPrimitiveExport(primitiveName, cell.x, cell.y, size);
+      
+      if (params.recursionDepth > 0) {
+        drawPrimitiveRecursiveExport(primitiveName, cell.x, cell.y, size, params.recursionDepth, grid, drawPrimitiveExport);
+      }
+    }
+  };
+  
+  // Рекурсивная функция для экспорта
+  const drawPrimitiveRecursiveExport = (primitiveName, x, y, size, depth, grid, drawFunc) => {
+    if (depth <= 0) return;
+    
+    const neighbors = grid.getNeighboringCell(x, y);
+    if (neighbors.length > 0) {
+      const neighbor = random(neighbors);
+      const newSize = grid.getCellSize();
+      const opacity = map(depth, 0, params.recursionDepth, 50, params.blendOpacity);
+      
+      exportCanvas.push();
+      exportCanvas.drawingContext.globalAlpha = opacity / 100;
+      
+      drawFunc(primitiveName, neighbor.x, neighbor.y, newSize);
+      
+      exportCanvas.pop();
+      
+      const newPrimitive = random() < 0.3 ? random(PRIMITIVE_NAMES) : primitiveName;
+      drawPrimitiveRecursiveExport(newPrimitive, neighbor.x, neighbor.y, newSize, depth - 1, grid, drawFunc);
+    }
+  };
+  
+  // Рисуем 4 секции
+  const w = 1600 / 2;
+  const h = 1600 / 2;
+  
+  generateSectionExport(0, 0, w, h);
+  generateSectionExport(w, 0, w, h);
+  generateSectionExport(0, h, w, h);
+  generateSectionExport(w, h, w, h);
+  
+  // Разделительные линии
+  exportCanvas.stroke(COLORS.warmGray);
+  exportCanvas.strokeWeight(0.5 * scale);
+  exportCanvas.line(w, 0, w, 1600);
+  exportCanvas.line(0, h, 1600, h);
+  
+  // Сохраняем
+  saveCanvas(exportCanvas, 'generative_grid_HQ', 'png');
+  
+  // Удаляем временный canvas
+  exportCanvas.remove();
+  
+  console.log('High-quality export (1600x1600) saved!');
+}
+
+// Функция для сброса изображения
+function clearBackgroundImage() {
+  backgroundImage = null;
+  // Canvas уже квадратный 800x800, не меняем размер
+  
+  // Сбрасываем трансформацию изображения
+  imageScale = 1.0;
+  imageOffsetX = 0;
+  imageOffsetY = 0;
+  params.imageScale = 1.0;
+  params.imageOffsetX = 0;
+  params.imageOffsetY = 0;
+  
+  cursor('pointer');
+  generateComposition();
 }
 
 function preload() {
@@ -559,19 +981,94 @@ function preload() {
 function setup() {
   createCanvas(800, 800);
   
+  // Включаем drag and drop для изображений
+  let canvas = document.querySelector('canvas');
+  
+  canvas.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvas.classList.add('dragover');
+  });
+  
+  canvas.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvas.classList.remove('dragover');
+  });
+  
+  canvas.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  
+  canvas.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    canvas.classList.remove('dragover');
+    
+    if (e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          handleFile({ type: 'image', data: event.target.result });
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  });
+  
   // Setup lil-gui
   gui = new lil.GUI();
+  
+  // Image controls
+  const imgFolder = gui.addFolder('Image');
+  imgFolder.add({ loadImage: () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          handleFile({ type: 'image', data: event.target.result });
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  }}, 'loadImage').name('📁 Load Image');
+  
+  imgFolder.add({ clearImage: clearBackgroundImage }, 'clearImage').name('🗑️ Clear Image');
+  imgFolder.add({ exportHQ: exportHighQuality }, 'exportHQ').name('💾 Export HQ (2x)');
+  imgFolder.add(params, 'imageScale', 0.1, 3, 0.05).name('🔍 Scale').onChange((value) => {
+    imageScale = value;
+    generateComposition();
+  });
+  imgFolder.add(params, 'imageOffsetX', -width, width, 5).name('↔️ Offset X').onChange((value) => {
+    imageOffsetX = value;
+    generateComposition();
+  });
+  imgFolder.add(params, 'imageOffsetY', -height, height, 5).name('↕️ Offset Y').onChange((value) => {
+    imageOffsetY = value;
+    generateComposition();
+  });
+  imgFolder.add(params, 'resetImageTransform').name('🔄 Reset Transform');
+  imgFolder.open();
   
   // Composition controls
   const compFolder = gui.addFolder('Composition');
   compFolder.add(params, 'regenerate').name('🔄 Regenerate');
   compFolder.add(params, 'gridDensity', 3, 15, 1).name('Grid Density').onChange(() => generateComposition());
+  compFolder.add(params, 'primitiveSizeMultiplier', 1, 8, 0.5).name('Primitive Scale').onChange(() => generateComposition());
   compFolder.add(params, 'primitivesPerSection', 3, 20, 1).name('Primitives per Section').onChange(() => generateComposition());
   compFolder.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
   compFolder.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
   compFolder.add(params, 'radialProbability', 0, 1, 0.1).name('Radial Probability').onChange(() => generateComposition());
   compFolder.add(params, 'showConstructionLines').name('Show Grid Points').onChange(() => generateComposition());
   compFolder.add(params, 'lineWeight', 0.2, 2, 0.1).name('Line Weight').onChange(() => generateComposition());
+  compFolder.add(params, 'primitiveColor', ['black', 'orange', 'lime', 'greenGray', 'warmGray', 'nearWhite']).name('Primitive Color').onChange(() => generateComposition());
   compFolder.open();
   
   // Distortion shader controls
@@ -590,24 +1087,55 @@ function setup() {
 }
 
 function draw() {
-  // Apply distortion shader if enabled
-  if (params.useDistortion) {
-    // Set shader uniforms
-    myFilterShader.setUniform("u_distortionScale1", params.distortionScale1);
-    myFilterShader.setUniform("u_distortionScale2", params.distortionScale2);
-    myFilterShader.setUniform("u_distortionAmp", params.distortionAmp);
-    myFilterShader.setUniform("u_distortionFreqX", params.distortionFreqX);
-    myFilterShader.setUniform("u_distortionFreqY", params.distortionFreqY);
+  // Если анимация дисторсии включена и есть изображение, перерисовываем
+  if (params.animateDistortion && params.useDistortion && backgroundImage) {
+    generateComposition();
+  }
+}
+
+function mousePressed() {
+  // Начинаем перемещение изображения только если есть изображение и нажата левая кнопка мыши
+  if (backgroundImage && mouseButton === LEFT) {
+    isDraggingImage = true;
+    dragStartX = mouseX;
+    dragStartY = mouseY;
+    dragOffsetX = imageOffsetX;
+    dragOffsetY = imageOffsetY;
+    cursor('grabbing');
+    return false; // Предотвращаем стандартное поведение
+  }
+}
+
+function mouseDragged() {
+  // Перемещаем изображение если активен drag
+  if (isDraggingImage && backgroundImage) {
+    const deltaX = mouseX - dragStartX;
+    const deltaY = mouseY - dragStartY;
     
-    // Set time uniform for animation
-    if (params.animateDistortion) {
-      myFilterShader.setUniform("u_time", millis() / 1000.0);
-    } else {
-      myFilterShader.setUniform("u_time", 0.0);
-    }
+    imageOffsetX = dragOffsetX + deltaX;
+    imageOffsetY = dragOffsetY + deltaY;
     
-    // Apply the filter shader
-    filterShader(myFilterShader);
+    // Обновляем параметры GUI
+    params.imageOffsetX = imageOffsetX;
+    params.imageOffsetY = imageOffsetY;
+    
+    generateComposition();
+    return false;
+  }
+}
+
+function mouseReleased() {
+  // Завершаем перемещение изображения
+  if (isDraggingImage) {
+    isDraggingImage = false;
+    cursor(backgroundImage ? 'grab' : 'pointer');
+  }
+}
+
+function mouseMoved() {
+  // Меняем курсор в зависимости от наличия изображения
+  if (backgroundImage && !isDraggingImage) {
+    cursor('grab');
   }
 }
 
@@ -620,5 +1148,10 @@ function keyPressed() {
   // Нажмите 's' для сохранения
   if (key === 's' || key === 'S') {
     saveCanvas('generative_grid', 'png');
+  }
+  
+  // Нажмите 'r' для сброса трансформации изображения
+  if ((key === 'r' || key === 'R') && backgroundImage) {
+    params.resetImageTransform();
   }
 }

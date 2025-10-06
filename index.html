@@ -12,12 +12,40 @@
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background-color: #1a1a1a;
     }
     main {
       display: flex;
       flex-direction: column;
       align-items: center;
+      position: relative;
+    }
+    canvas {
+      cursor: pointer;
+      transition: opacity 0.2s;
+      user-select: none;
+    }
+    canvas.dragover {
+      opacity: 0.7;
+      outline: 3px dashed #4a9eff;
+      outline-offset: -10px;
+    }
+    .drop-hint {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(74, 158, 255, 0.9);
+      color: white;
+      padding: 20px 40px;
+      border-radius: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    canvas.dragover + .drop-hint {
+      opacity: 1;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
@@ -25,7 +53,9 @@
   <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19"></script>
 </head>
 <body>
-  <main></main>
+  <main>
+    <div class="drop-hint">📁 Drop image here</div>
+  </main>
   <script src="sketch.js"></script>
 </body>
 </html>
