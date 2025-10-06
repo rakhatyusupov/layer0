@@ -681,10 +681,12 @@ function drawTextBlocks(inputString) {
       // Случайный цвет из палитры
       const bgColor = random(PALETTE);
       
-      // Генерируем случайные веса шрифта для каждого символа
+      // Генерируем случайные веса шрифта и стили для каждого символа
       const charWeights = [];
+      const charStyles = [];
       for (let c = 0; c < line.length; c++) {
         charWeights.push(random(['400', '500', '600', '700']));
+        charStyles.push(random(['normal', 'italic']));
       }
       
       textBlocks.push({
@@ -695,7 +697,8 @@ function drawTextBlocks(inputString) {
         blockHeight: blockHeight,
         bgColor: bgColor,
         padding: random(30, 60),
-        charWeights: charWeights
+        charWeights: charWeights,
+        charStyles: charStyles
       });
     });
   }
@@ -734,24 +737,25 @@ function drawTextBlocks(inputString) {
     
     // Вычисляем общую ширину для центрирования
     let totalWidth = 0;
-    drawingContext.font = `400 ${block.fontSize}px 'PP Mori', sans-serif`;
     for (let i = 0; i < block.text.length; i++) {
       const char = block.text[i];
       const weight = block.charWeights[i];
-      drawingContext.font = `${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
+      const style = block.charStyles[i];
+      drawingContext.font = `${style} ${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
       totalWidth += drawingContext.measureText(char).width;
     }
     
     // Стартовая позиция для центрированного текста
     let currentX = block.x - totalWidth / 2;
     
-    // Рисуем каждый символ с его весом
+    // Рисуем каждый символ с его весом и стилем
     for (let i = 0; i < block.text.length; i++) {
       const char = block.text[i];
       const weight = block.charWeights[i];
+      const style = block.charStyles[i];
       
-      // Устанавливаем вес шрифта напрямую через canvas context
-      drawingContext.font = `${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
+      // Устанавливаем вес и стиль шрифта напрямую через canvas context
+      drawingContext.font = `${style} ${weight} ${block.fontSize}px 'PP Mori', sans-serif`;
       drawingContext.fillStyle = textColor;
       drawingContext.textAlign = 'left';
       drawingContext.textBaseline = 'middle';
