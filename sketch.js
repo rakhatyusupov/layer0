@@ -938,7 +938,7 @@ function exportHighQuality() {
   const oldHeight = height;
   
   // Временно переключаемся на экспортный canvas
-  exportCanvas.pixelDensity(1); // Для точного контроля размера
+  exportCanvas.pixelDensity(3); // Для точного контроля размера
   
   // === РИСУЕМ ИЗОБРАЖЕНИЕ ===
   if (backgroundImage) {
