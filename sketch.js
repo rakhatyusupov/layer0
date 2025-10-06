@@ -10,7 +10,15 @@ const params = {
   lineWeight: 0.5,
   primitivesPerSection: 12,
   recursionDepth: 2,
-  blendOpacity: 50
+  blendOpacity: 50,
+  // Distortion shader params
+  useDistortion: true,
+  distortionScale1: 0.3,
+  distortionScale2: 3.5,
+  distortionAmp: 20.0,
+  distortionFreqX: 30.0,
+  distortionFreqY: 30.0,
+  animateDistortion: true
 };
 
 // Словарь примитивов
@@ -554,23 +562,53 @@ function setup() {
   // Setup lil-gui
   gui = new lil.GUI();
   
-  gui.add(params, 'regenerate').name('🔄 Regenerate');
-  gui.add(params, 'gridDensity', 3, 15, 1).name('Grid Density').onChange(() => generateComposition());
-  gui.add(params, 'primitivesPerSection', 3, 20, 1).name('Primitives per Section').onChange(() => generateComposition());
-  gui.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
-  gui.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
-  gui.add(params, 'radialProbability', 0, 1, 0.1).name('Radial Probability').onChange(() => generateComposition());
-  gui.add(params, 'showConstructionLines').name('Show Grid Points').onChange(() => generateComposition());
-  gui.add(params, 'lineWeight', 0.2, 2, 0.1).name('Line Weight').onChange(() => generateComposition());
+  // Composition controls
+  const compFolder = gui.addFolder('Composition');
+  compFolder.add(params, 'regenerate').name('🔄 Regenerate');
+  compFolder.add(params, 'gridDensity', 3, 15, 1).name('Grid Density').onChange(() => generateComposition());
+  compFolder.add(params, 'primitivesPerSection', 3, 20, 1).name('Primitives per Section').onChange(() => generateComposition());
+  compFolder.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
+  compFolder.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
+  compFolder.add(params, 'radialProbability', 0, 1, 0.1).name('Radial Probability').onChange(() => generateComposition());
+  compFolder.add(params, 'showConstructionLines').name('Show Grid Points').onChange(() => generateComposition());
+  compFolder.add(params, 'lineWeight', 0.2, 2, 0.1).name('Line Weight').onChange(() => generateComposition());
+  compFolder.open();
+  
+  // Distortion shader controls
+  const distFolder = gui.addFolder('Distortion Effect');
+  distFolder.add(params, 'useDistortion').name('Enable Distortion');
+  distFolder.add(params, 'animateDistortion').name('Animate');
+  distFolder.add(params, 'distortionAmp', 0, 50, 0.5).name('Amplitude');
+  distFolder.add(params, 'distortionScale1', 0.1, 2, 0.05).name('Scale 1');
+  distFolder.add(params, 'distortionScale2', 0.5, 10, 0.1).name('Scale 2');
+  distFolder.add(params, 'distortionFreqX', 1, 100, 1).name('Frequency X');
+  distFolder.add(params, 'distortionFreqY', 1, 100, 1).name('Frequency Y');
+  distFolder.open();
   
   // Первая генерация
   generateComposition();
 }
 
 function draw() {
-  // Статичная композиция, не перерисовываем каждый фрейм
-  // Можно раскомментировать для применения фильтра
-  // filterShader(myFilterShader);
+  // Apply distortion shader if enabled
+  if (params.useDistortion) {
+    // Set shader uniforms
+    myFilterShader.setUniform("u_distortionScale1", params.distortionScale1);
+    myFilterShader.setUniform("u_distortionScale2", params.distortionScale2);
+    myFilterShader.setUniform("u_distortionAmp", params.distortionAmp);
+    myFilterShader.setUniform("u_distortionFreqX", params.distortionFreqX);
+    myFilterShader.setUniform("u_distortionFreqY", params.distortionFreqY);
+    
+    // Set time uniform for animation
+    if (params.animateDistortion) {
+      myFilterShader.setUniform("u_time", millis() / 1000.0);
+    } else {
+      myFilterShader.setUniform("u_time", 0.0);
+    }
+    
+    // Apply the filter shader
+    filterShader(myFilterShader);
+  }
 }
 
 function keyPressed() {
