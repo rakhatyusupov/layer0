@@ -187,21 +187,6 @@ const PRIMITIVES = {
     ellipse(x, y, size, size);
   },
   
-  dot: function(x, y, size) {
-    fill(0);
-    ellipse(x, y, size * 0.15, size * 0.15);
-    noFill();
-  },
-  
-  // Точка с крестом (центр построения)
-  center_mark: function(x, y, size) {
-    fill(0);
-    ellipse(x, y, size * 0.1, size * 0.1);
-    noFill();
-    line(x - size * 0.3, y, x + size * 0.3, y);
-    line(x, y - size * 0.3, x, y + size * 0.3);
-  },
-  
   diagonal_tl_br: function(x, y, size) {
     line(x - size/2, y - size/2, x + size/2, y + size/2);
   },
@@ -298,49 +283,127 @@ class Grid {
     this.h = h;
     this.density = density;
     this.isRadial = random() < params.radialProbability;
+    this.cellW = this.w / this.density;
+    this.cellH = this.h / this.density;
+    this.usedCells = new Set();
   }
   
-  // Получить рандомную точку из сетки
-  getRandomPoint() {
+  // Получить размер ячейки для привязки размера примитивов
+  getCellSize() {
     if (this.isRadial) {
-      return this.getRadialPoint();
+      const maxRadius = min(this.w, this.h) / 2;
+      return (maxRadius / this.density) * 1.5;
     } else {
-      return this.getTypographicPoint();
+      return min(this.cellW, this.cellH) * 0.9;
     }
   }
   
-  // Типографическая сетка
-  getTypographicPoint() {
-    const cellW = this.w / this.density;
-    const cellH = this.h / this.density;
-    
-    const col = floor(random(this.density));
-    const row = floor(random(this.density));
-    
-    return {
-      x: this.x + col * cellW + cellW / 2,
-      y: this.y + row * cellH + cellH / 2
-    };
+  // Получить случайную начальную ячейку
+  getRandomCell() {
+    if (this.isRadial) {
+      const rings = this.density;
+      const ring = floor(random(rings));
+      const pointsInRing = max(6, ring * 6);
+      const angleIndex = floor(random(pointsInRing));
+      return { ring, angleIndex, pointsInRing };
+    } else {
+      const col = floor(random(this.density));
+      const row = floor(random(this.density));
+      return { col, row };
+    }
   }
   
-  // Радиальная сетка
-  getRadialPoint() {
-    const centerX = this.x + this.w / 2;
-    const centerY = this.y + this.h / 2;
-    const maxRadius = min(this.w, this.h) / 2;
+  // Получить координаты центра ячейки
+  getCellCenter(cell) {
+    if (this.isRadial) {
+      const centerX = this.x + this.w / 2;
+      const centerY = this.y + this.h / 2;
+      const maxRadius = min(this.w, this.h) / 2;
+      const radius = ((cell.ring + 1) * maxRadius) / this.density;
+      const angleStep = TWO_PI / cell.pointsInRing;
+      const angle = cell.angleIndex * angleStep;
+      
+      return {
+        x: centerX + cos(angle) * radius,
+        y: centerY + sin(angle) * radius
+      };
+    } else {
+      return {
+        x: this.x + cell.col * this.cellW + this.cellW / 2,
+        y: this.y + cell.row * this.cellH + this.cellH / 2
+      };
+    }
+  }
+  
+  // Получить соседнюю ячейку
+  getNeighboringCell(cell) {
+    if (this.isRadial) {
+      // Радиальная сетка: соседи = соседнее кольцо или соседний угол
+      const choice = random();
+      
+      if (choice < 0.33 && cell.ring > 0) {
+        // Внутреннее кольцо
+        const newRing = cell.ring - 1;
+        const newPointsInRing = max(6, newRing * 6);
+        return {
+          ring: newRing,
+          angleIndex: floor(random(newPointsInRing)),
+          pointsInRing: newPointsInRing
+        };
+      } else if (choice < 0.66 && cell.ring < this.density - 1) {
+        // Внешнее кольцо
+        const newRing = cell.ring + 1;
+        const newPointsInRing = max(6, newRing * 6);
+        return {
+          ring: newRing,
+          angleIndex: floor(random(newPointsInRing)),
+          pointsInRing: newPointsInRing
+        };
+      } else {
+        // Соседний угол на том же кольце
+        const offset = random() < 0.5 ? -1 : 1;
+        const newAngleIndex = (cell.angleIndex + offset + cell.pointsInRing) % cell.pointsInRing;
+        return {
+          ring: cell.ring,
+          angleIndex: newAngleIndex,
+          pointsInRing: cell.pointsInRing
+        };
+      }
+    } else {
+      // Типографическая сетка: 4 направления (вверх, вниз, влево, вправо)
+      const directions = [
+        { col: cell.col - 1, row: cell.row },     // влево
+        { col: cell.col + 1, row: cell.row },     // вправо
+        { col: cell.col, row: cell.row - 1 },     // вверх
+        { col: cell.col, row: cell.row + 1 }      // вниз
+      ];
+      
+      // Фильтруем только валидные соседние ячейки
+      const validNeighbors = directions.filter(d => 
+        d.col >= 0 && d.col < this.density && 
+        d.row >= 0 && d.row < this.density
+      );
+      
+      if (validNeighbors.length > 0) {
+        return random(validNeighbors);
+      } else {
+        return cell; // Если нет соседей, возвращаем текущую
+      }
+    }
+  }
+  
+  // Получить путь из ячеек (начальная + соседние)
+  getCellPath(length = 2) {
+    const path = [];
+    let currentCell = this.getRandomCell();
+    path.push(currentCell);
     
-    const rings = this.density;
-    const ring = floor(random(rings));
-    const radius = (ring + 1) * (maxRadius / rings);
+    for (let i = 1; i < length; i++) {
+      currentCell = this.getNeighboringCell(currentCell);
+      path.push(currentCell);
+    }
     
-    const pointsInRing = max(6, ring * 6);
-    const angleStep = TWO_PI / pointsInRing;
-    const angle = floor(random(pointsInRing)) * angleStep;
-    
-    return {
-      x: centerX + cos(angle) * radius,
-      y: centerY + sin(angle) * radius
-    };
+    return path;
   }
 }
 
@@ -348,11 +411,12 @@ class Grid {
 function generateSection(sectionX, sectionY, sectionW, sectionH) {
   const grid = new Grid(sectionX, sectionY, sectionW, sectionH, params.gridDensity);
   const numPrimitives = floor(random(8, params.primitivesPerSection));
+  const cellSize = grid.getCellSize();
   
   push();
   strokeWeight(params.lineWeight);
   
-  // Рисуем конструктивные точки сетки (если включено)
+  // Рисуем конструктивные точки сетки (более заметные)
   if (params.showConstructionLines && grid.isRadial) {
     fill(0);
     noStroke();
@@ -361,8 +425,8 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
     const maxRadius = min(sectionW, sectionH) / 2;
     
     // Радиальные точки на кольцах
-    for (let ring = 1; ring <= params.gridDensity; ring++) {
-      const radius = (ring * maxRadius) / params.gridDensity;
+    for (let ring = 0; ring < params.gridDensity; ring++) {
+      const radius = ((ring + 1) * maxRadius) / params.gridDensity;
       const pointsInRing = max(6, ring * 6);
       
       for (let i = 0; i < pointsInRing; i++) {
@@ -370,13 +434,13 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
         let px = centerX + cos(angle) * radius;
         let py = centerY + sin(angle) * radius;
         rectMode(CENTER);
-        rect(px, py, 2, 2);
+        rect(px, py, 3, 3);
       }
     }
     
     // Центральная точка
     rectMode(CENTER);
-    rect(centerX, centerY, 3, 3);
+    rect(centerX, centerY, 4, 4);
     
     stroke(0);
     noFill();
@@ -384,13 +448,11 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
     // Типографическая сетка из квадратных точек
     fill(0);
     noStroke();
-    const cellW = sectionW / params.gridDensity;
-    const cellH = sectionH / params.gridDensity;
     
     for (let i = 0; i <= params.gridDensity; i++) {
       for (let j = 0; j <= params.gridDensity; j++) {
         rectMode(CENTER);
-        rect(sectionX + i * cellW, sectionY + j * cellH, 2, 2);
+        rect(sectionX + i * grid.cellW, sectionY + j * grid.cellH, 3, 3);
       }
     }
     
@@ -400,15 +462,26 @@ function generateSection(sectionX, sectionY, sectionW, sectionH) {
   
   strokeWeight(params.lineWeight);
   
-  // Рисуем примитивы с рекурсивным наложением и большим контрастом размеров
+  // Рисуем примитивы используя новую логику сетки
   for (let i = 0; i < numPrimitives; i++) {
-    const point = grid.getRandomPoint();
-    const primitiveName = random(PRIMITIVE_NAMES);
-    // Увеличенный контраст размеров: от 0.3x до 2.5x
-    const sizeVariation = random() < 0.3 ? random(0.3, 0.7) : random(1.2, 2.5);
+    // Генерируем путь из 1-3 соседних ячеек
+    const pathLength = floor(random(1, 4));
+    const cellPath = grid.getCellPath(pathLength);
     
-    // Рекурсивное наложение с уменьшением прозрачности
-    drawPrimitiveRecursive(primitiveName, point.x, point.y, params.primitiveSize * sizeVariation, params.recursionDepth);
+    // Рисуем примитив в каждой ячейке пути
+    const primitiveName = random(PRIMITIVE_NAMES);
+    
+    for (let j = 0; j < cellPath.length; j++) {
+      const cell = cellPath[j];
+      const point = grid.getCellCenter(cell);
+      
+      // Размер привязан к размеру ячейки с вариацией
+      const sizeVariation = random() < 0.3 ? random(0.4, 0.7) : random(0.8, 1.4);
+      const primitiveSize = cellSize * sizeVariation;
+      
+      // Рекурсивное наложение с уменьшением прозрачности
+      drawPrimitiveRecursive(primitiveName, point.x, point.y, primitiveSize, params.recursionDepth);
+    }
   }
   
   pop();
@@ -482,13 +555,12 @@ function setup() {
   gui = new lil.GUI();
   
   gui.add(params, 'regenerate').name('🔄 Regenerate');
-  gui.add(params, 'gridDensity', 3, 12, 1).name('Grid Density').onChange(() => generateComposition());
-  gui.add(params, 'primitiveSize', 20, 800, 1).name('Primitive Size').onChange(() => generateComposition());
-  gui.add(params, 'primitivesPerSection', 5, 25, 1).name('Primitives per Section').onChange(() => generateComposition());
+  gui.add(params, 'gridDensity', 3, 15, 1).name('Grid Density').onChange(() => generateComposition());
+  gui.add(params, 'primitivesPerSection', 3, 20, 1).name('Primitives per Section').onChange(() => generateComposition());
   gui.add(params, 'recursionDepth', 0, 4, 1).name('Recursion Depth').onChange(() => generateComposition());
   gui.add(params, 'blendOpacity', 20, 150, 5).name('Blend Opacity').onChange(() => generateComposition());
   gui.add(params, 'radialProbability', 0, 1, 0.1).name('Radial Probability').onChange(() => generateComposition());
-  gui.add(params, 'showConstructionLines').name('Show Grid Lines').onChange(() => generateComposition());
+  gui.add(params, 'showConstructionLines').name('Show Grid Points').onChange(() => generateComposition());
   gui.add(params, 'lineWeight', 0.2, 2, 0.1).name('Line Weight').onChange(() => generateComposition());
   
   // Первая генерация
